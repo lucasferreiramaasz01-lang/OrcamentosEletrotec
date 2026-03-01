@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, redirect, session, send_file
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle, HRFlowable
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.pagesizes import A4
 from PIL import Image as PILImage
 import pillow_heif
 from io import BytesIO
@@ -17,7 +18,6 @@ LOGIN_FIXO = "mauricio"
 SENHA_FIXA = "12345"
 
 
-# ================= LOGIN =================
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -29,7 +29,6 @@ def login():
     return render_template("login.html")
 
 
-# ================= FORM =================
 @app.route("/form", methods=["GET", "POST"])
 def form():
     if not session.get("logado"):
@@ -39,12 +38,12 @@ def form():
     return render_template("form.html")
 
 
-# ================= GERAR PDF =================
 def gerar_pdf():
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
         buffer,
+        pagesize=A4,
         rightMargin=40,
         leftMargin=40,
         topMargin=40,
@@ -64,10 +63,18 @@ def gerar_pdf():
         name="TituloStyle",
         fontName="Helvetica-Bold",
         fontSize=16,
-        spaceAfter=15
+        spaceAfter=15,
+        alignment=1  # Centralizado
     )
 
-    # ===== LOGO =====
+    assinatura_style = ParagraphStyle(
+        name="AssinaturaStyle",
+        fontName="Helvetica",
+        fontSize=12,
+        alignment=1  # Centralizado
+    )
+
+    # ===== LOGO (20% MAIOR) =====
     logo_path = os.path.join("static", "logo.jpeg")
     if os.path.exists(logo_path):
         logo = PILImage.open(logo_path)
@@ -78,7 +85,8 @@ def gerar_pdf():
         logo.thumbnail((800, 800))
 
         largura, altura = logo.size
-        largura_max = 200
+
+        largura_max = 240  # AUMENTADO (antes era 200)
         proporcao = largura_max / float(largura)
         nova_altura = float(altura) * proporcao
 
@@ -88,14 +96,15 @@ def gerar_pdf():
 
         img_logo = Image(logo_io, width=largura_max, height=nova_altura)
         img_logo.hAlign = "CENTER"
+
         elements.append(img_logo)
         elements.append(Spacer(1, 20))
 
     # ===== TÍTULO =====
     elements.append(Paragraph("Proposta Comercial", titulo))
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 20))
 
-    # ===== DADOS DO FORMULÁRIO =====
+    # ===== DADOS =====
     nome = request.form["nome"]
     endereco = request.form["endereco"]
     tipo = request.form["tipo"]
@@ -137,11 +146,11 @@ def gerar_pdf():
     elements.append(Paragraph(f"Condições de pagamento: {pagamento}", normal))
     elements.append(Spacer(1, 15))
 
-    # ===== VALOR (APENAS 1 VEZ) =====
+    # ===== VALOR =====
     elements.append(Paragraph(f"<b>Valor: R$ {valor}</b>", normal))
     elements.append(Spacer(1, 25))
 
-    # ===== IMAGEM (MENOR E À DIREITA) =====
+    # ===== IMAGEM À DIREITA =====
     imagem = request.files["imagem"]
 
     if imagem:
@@ -150,12 +159,11 @@ def gerar_pdf():
         if img.mode != "RGB":
             img = img.convert("RGB")
 
-        # Reduz tamanho para evitar estouro de memória
         img.thumbnail((1000, 1000))
 
         largura, altura = img.size
 
-        largura_pdf = 300  # menor que antes
+        largura_pdf = 300
         proporcao = largura_pdf / float(largura)
         nova_altura = float(altura) * proporcao
 
@@ -167,12 +175,15 @@ def gerar_pdf():
         img_prod.hAlign = "RIGHT"
 
         elements.append(img_prod)
-        elements.append(Spacer(1, 40))
+        elements.append(Spacer(1, 50))
 
-    # ===== ASSINATURA =====
-    elements.append(HRFlowable(width="50%", thickness=1, color=colors.black))
+    # ===== ASSINATURA CENTRALIZADA =====
+    linha = HRFlowable(width="40%", thickness=1, color=colors.black)
+    linha.hAlign = "CENTER"
+
+    elements.append(linha)
     elements.append(Spacer(1, 5))
-    elements.append(Paragraph("Assinatura do responsável", normal))
+    elements.append(Paragraph("Assinatura do responsável", assinatura_style))
 
     doc.build(elements)
 
