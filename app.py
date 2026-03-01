@@ -1,3 +1,45 @@
+import os
+from flask import Flask, render_template, request, redirect, session, send_file
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle, HRFlowable
+from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle
+from PIL import Image as PILImage
+import pillow_heif
+from io import BytesIO
+
+# Suporte HEIC
+pillow_heif.register_heif_opener()
+
+app = Flask(__name__)
+app.secret_key = "chave_super_secreta"
+
+LOGIN_FIXO = "mauricio"
+SENHA_FIXA = "12345"
+
+
+# ================= LOGIN =================
+@app.route("/", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        if request.form["login"] == LOGIN_FIXO and request.form["senha"] == SENHA_FIXA:
+            session["logado"] = True
+            return redirect("/form")
+        else:
+            return "Login incorreto!"
+    return render_template("login.html")
+
+
+# ================= FORM =================
+@app.route("/form", methods=["GET", "POST"])
+def form():
+    if not session.get("logado"):
+        return redirect("/")
+    if request.method == "POST":
+        return gerar_pdf()
+    return render_template("form.html")
+
+
+# ================= GERAR PDF =================
 def gerar_pdf():
     buffer = BytesIO()
 
@@ -53,7 +95,7 @@ def gerar_pdf():
     elements.append(Paragraph("Proposta Comercial", titulo))
     elements.append(Spacer(1, 10))
 
-    # ===== DADOS =====
+    # ===== DADOS DO FORMULÁRIO =====
     nome = request.form["nome"]
     endereco = request.form["endereco"]
     tipo = request.form["tipo"]
@@ -95,11 +137,11 @@ def gerar_pdf():
     elements.append(Paragraph(f"Condições de pagamento: {pagamento}", normal))
     elements.append(Spacer(1, 15))
 
-    # ===== VALOR (AGORA APENAS 1 VEZ) =====
+    # ===== VALOR (APENAS 1 VEZ) =====
     elements.append(Paragraph(f"<b>Valor: R$ {valor}</b>", normal))
     elements.append(Spacer(1, 25))
 
-    # ===== IMAGEM DO PRODUTO (MENOR E À DIREITA) =====
+    # ===== IMAGEM (MENOR E À DIREITA) =====
     imagem = request.files["imagem"]
 
     if imagem:
@@ -108,12 +150,12 @@ def gerar_pdf():
         if img.mode != "RGB":
             img = img.convert("RGB")
 
+        # Reduz tamanho para evitar estouro de memória
         img.thumbnail((1000, 1000))
 
         largura, altura = img.size
 
-        # 🔥 reduzir 25% mantendo proporção
-        largura_pdf = 300
+        largura_pdf = 300  # menor que antes
         proporcao = largura_pdf / float(largura)
         nova_altura = float(altura) * proporcao
 
@@ -121,7 +163,7 @@ def gerar_pdf():
         img.save(img_io, format="JPEG", quality=85, optimize=True)
         img_io.seek(0)
 
-        img_prod = Image(img_io, width=larga_pdf if False else largura_pdf, height=nova_altura)
+        img_prod = Image(img_io, width=largura_pdf, height=nova_altura)
         img_prod.hAlign = "RIGHT"
 
         elements.append(img_prod)
@@ -142,3 +184,7 @@ def gerar_pdf():
         download_name="proposta.pdf",
         mimetype="application/pdf"
     )
+
+
+if __name__ == "__main__":
+    app.run()
