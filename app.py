@@ -3,11 +3,11 @@ from flask import Flask, render_template, request, redirect, session, send_file
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle, HRFlowable
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import inch
 from PIL import Image as PILImage
 import pillow_heif
 from io import BytesIO
 
+# Suporte HEIC
 pillow_heif.register_heif_opener()
 
 app = Flask(__name__)
@@ -17,6 +17,7 @@ LOGIN_FIXO = "mauricio"
 SENHA_FIXA = "12345"
 
 
+# ================= LOGIN =================
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -28,6 +29,7 @@ def login():
     return render_template("login.html")
 
 
+# ================= FORM =================
 @app.route("/form", methods=["GET", "POST"])
 def form():
     if not session.get("logado"):
@@ -37,8 +39,10 @@ def form():
     return render_template("form.html")
 
 
+# ================= GERAR PDF =================
 def gerar_pdf():
     buffer = BytesIO()
+
     doc = SimpleDocTemplate(
         buffer,
         rightMargin=40,
@@ -67,13 +71,19 @@ def gerar_pdf():
     logo_path = os.path.join("static", "logo.jpeg")
     if os.path.exists(logo_path):
         logo = PILImage.open(logo_path)
+
+        if logo.mode != "RGB":
+            logo = logo.convert("RGB")
+
+        logo.thumbnail((800, 800))
+
         largura, altura = logo.size
         largura_max = 220
         proporcao = largura_max / float(largura)
         nova_altura = float(altura) * proporcao
 
         logo_io = BytesIO()
-        logo.save(logo_io, format="PNG")
+        logo.save(logo_io, format="JPEG", quality=85, optimize=True)
         logo_io.seek(0)
 
         img_logo = Image(logo_io, width=largura_max, height=nova_altura)
@@ -85,7 +95,7 @@ def gerar_pdf():
     elements.append(Paragraph("Proposta Comercial", titulo))
     elements.append(Spacer(1, 10))
 
-    # ===== DADOS =====
+    # ===== DADOS DO FORMULÁRIO =====
     nome = request.form["nome"]
     endereco = request.form["endereco"]
     tipo = request.form["tipo"]
@@ -132,24 +142,34 @@ def gerar_pdf():
     elements.append(Paragraph(f"Valor: R$ {valor}", normal))
     elements.append(Spacer(1, 30))
 
-    # ===== IMAGEM DO PRODUTO =====
+    # ===== IMAGEM DO PRODUTO (OTIMIZADA) =====
     imagem = request.files["imagem"]
+
     if imagem:
         img = PILImage.open(imagem)
+
+        # Converter para RGB
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # 🔥 Reduz tamanho para evitar estouro de memória
+        img.thumbnail((1200, 1200))
+
         largura, altura = img.size
-        largura_max = 400
-        proporcao = largura_max / float(largura)
+        largura_pdf = 400
+        proporcao = largura_pdf / float(largura)
         nova_altura = float(altura) * proporcao
 
         img_io = BytesIO()
-        img.save(img_io, format="PNG")
+        img.save(img_io, format="JPEG", quality=85, optimize=True)
         img_io.seek(0)
 
         elements.append(Paragraph("Imagem do produto", normal))
         elements.append(Spacer(1, 10))
 
-        img_prod = Image(img_io, width=largura_max, height=nova_altura)
+        img_prod = Image(img_io, width=largura_pdf, height=nova_altura)
         img_prod.hAlign = "LEFT"
+
         elements.append(img_prod)
         elements.append(Spacer(1, 40))
 
@@ -161,6 +181,7 @@ def gerar_pdf():
     doc.build(elements)
 
     buffer.seek(0)
+
     return send_file(
         buffer,
         as_attachment=True,
